@@ -306,7 +306,7 @@ elif opcao == "📅 Gestão de Eventos":
     with aba_painel:
         st.subheader("📋 Quadro de Gestão de Eventos")
         
-        # Cria tabelas se não existirem
+        # Garante tabelas
         con_temp = pegar_conexao()
         con_temp.execute("CREATE TABLE IF NOT EXISTS album_fotos (id INTEGER PRIMARY KEY AUTOINCREMENT, id_evento INTEGER, caminho_foto TEXT)")
         con_temp.commit()
@@ -345,7 +345,6 @@ elif opcao == "📅 Gestão de Eventos":
                             
                             t_info, t_acao = st.tabs(["📋 Detalhes", "⚙️ Gestão"])
                             
-                            # Prepara lista da equipe para uso no código
                             equipe_atual_lista = [x.strip() for x in row['equipe_nomes'].split(",")] if row['equipe_nomes'] else []
                             equipe_validada = [m for m in equipe_atual_lista if m in lista_membros_completa]
 
@@ -373,24 +372,23 @@ elif opcao == "📅 Gestão de Eventos":
                                         fotos_reais = [f for f in galeria['caminho_foto'].tolist() if os.path.exists(f)]
                                         if fotos_reais: st.image(fotos_reais, width=200)
 
-                            # --- ABA AÇÕES  ---
+                            # --- ABA AÇÕES ---
                             with t_acao:
                                 
-                                # =========================================
-                                # CENÁRIO 1: EVENTO FINALIZADO (TRAVADO)
-                                # =========================================
+                                # CENÁRIO 1: FINALIZADO (Correção da Cor do Texto)
                                 if row['status'] == 'Finalizado':
+                                    # AQUI ESTAVA O ERRO: Adicionei color: #1b5e20 para forçar letra escura
                                     st.markdown("""
-                                        <div style='background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #4CAF50; margin-bottom: 10px;'>
-                                            <h4 style='color: #2e7d32; margin:0;'>🔒 Evento Finalizado</h4>
-                                            <p style='font-size: 13px; margin:0;'>Equipe e Dados Históricos não podem ser alterados.</p>
+                                        <div style='background-color: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 15px;'>
+                                            <h4 style='color: #1b5e20; margin:0;'>🔒 Evento Finalizado</h4>
+                                            <p style='color: #2e7d32; font-size: 14px; margin-top: 5px;'>
+                                                <b>Registro Protegido:</b> Equipe e dados históricos não podem ser alterados.
+                                            </p>
                                         </div>
                                     """, unsafe_allow_html=True)
                                     
-                                    # Mostra a equipe apenas como texto (sem poder editar)
                                     st.write(f"**Equipe Confirmada:** {row['equipe_nomes']}")
                                     
-                                    # Admin serve APENAS para deletar o evento se necessário
                                     with st.expander("🔐 Área Admin (Apenas Exclusão)"):
                                         senha_admin = st.text_input("Senha", type="password", key=f"pass_{row['id']}")
                                         if senha_admin == "admin123":
@@ -404,11 +402,8 @@ elif opcao == "📅 Gestão de Eventos":
                                                 con.close()
                                                 st.rerun()
 
-                                # =========================================
-                                # CENÁRIO 2: EVENTO ATIVO (EDITÁVEL)
-                                # =========================================
+                                # CENÁRIO 2: ATIVO
                                 else:
-                                    # 1. EDITAR EQUIPE (Só aparece aqui)
                                     st.markdown("##### 👷 Editar Escalação")
                                     nova_equipe = st.multiselect("Membros da Equipe", lista_membros_completa, default=equipe_validada, key=f"edit_eq_{row['id']}")
                                     
@@ -424,7 +419,6 @@ elif opcao == "📅 Gestão de Eventos":
 
                                     st.divider()
 
-                                    # 2. FOTOS
                                     st.write("**Adicionar Fotos:**")
                                     novas_fotos = st.file_uploader("Upload", type=['jpg','png'], accept_multiple_files=True, key=f"up_{row['id']}", label_visibility="collapsed")
                                     if novas_fotos and st.button("Enviar Fotos", key=f"sf_{row['id']}"):
@@ -442,7 +436,6 @@ elif opcao == "📅 Gestão de Eventos":
 
                                     st.divider()
 
-                                    # 3. MUDAR STATUS
                                     st.write("**Alterar Status:**")
                                     ops = ["Agendado", "Em Andamento", "Finalizado"]
                                     idx = ops.index(row['status'])
@@ -466,7 +459,6 @@ elif opcao == "📅 Gestão de Eventos":
                                         con.close()
                                         st.rerun()
                                     
-                                    # 4. EXCLUIR
                                     st.write("---")
                                     chk_ex = st.checkbox("Confirmar exclusão", key=f"chk_del_{row['id']}")
                                     if st.button("🗑️ Excluir Evento", key=f"del_{row['id']}", disabled=not chk_ex):
@@ -730,5 +722,6 @@ elif opcao == "📅 Gestão de Eventos":
                     st.success(msg)
                     time.sleep(1.5)
                     st.rerun()
+
 
 
