@@ -303,12 +303,11 @@ elif opcao == "📅 Gestão de Eventos":
         "📋 Painel", "👥 Equipe", "➕ Novo", "🚚 Saída", "🔙 Retorno"
     ])
 
-    # --- ABA PAINEL ---
     # --- ABA PAINEL (COM TRAVA DE SEGURANÇA E GALERIA DE FOTOS) ---
-    with aba_painel:
+   with aba_painel:
         st.subheader("📋 Quadro de Gestão de Eventos")
         
-        # 1. GARANTIA DO BANCO DE DADOS (Cria tabela de fotos múltiplas se não existir)
+        # (Código de criação da tabela de fotos - mantemos igual)
         con_temp = pegar_conexao()
         con_temp.execute("CREATE TABLE IF NOT EXISTS album_fotos (id INTEGER PRIMARY KEY AUTOINCREMENT, id_evento INTEGER, caminho_foto TEXT)")
         con_temp.commit()
@@ -321,7 +320,6 @@ elif opcao == "📅 Gestão de Eventos":
         if df_evs.empty:
             st.info("Nenhum evento cadastrado.")
         else:
-            # Kanban: 3 Colunas
             col_andamento, col_agendado, col_finalizado = st.columns(3, gap="medium")
             
             configuracao = [
@@ -341,25 +339,20 @@ elif opcao == "📅 Gestão de Eventos":
                         st.caption("Vazio.")
                     
                     for _, row in df_filt.iterrows():
-                        # O Cartão do Evento
                         with st.expander(f"📍 {row['endereco']}"):
                             st.caption(f"Data: {datetime.strptime(row['data_evento'], '%Y-%m-%d').strftime('%d/%m/%Y')}")
                             
-                            # Separamos em abas para organizar
                             t_info, t_acao = st.tabs(["📋 Detalhes", "⚙️ Gestão"])
                             
-                            # --- ABA 1: INFORMAÇÕES (VISÍVEL PARA TODOS) ---
+                            # --- ABA DETALHES (Igual ao anterior) ---
                             with t_info:
                                 st.write(f"**👷 Equipe:** {row['equipe_nomes']}")
                                 st.markdown("---")
-                                
-                                # Materiais
                                 con = pegar_conexao()
                                 itens = pd.read_sql_query(f'''
                                     SELECT i.nome_item, m.quantidade FROM movimentacoes m 
                                     JOIN itens i ON m.id_item = i.id WHERE m.id_evento = {row['id']}
                                 ''', con)
-                                # Busca as fotos do álbum
                                 galeria = pd.read_sql_query(f"SELECT caminho_foto FROM album_fotos WHERE id_evento = {row['id']}", con)
                                 con.close()
                                 
@@ -367,136 +360,183 @@ elif opcao == "📅 Gestão de Eventos":
                                     st.write("**📦 Materiais:**")
                                     st.dataframe(itens, hide_index=True, use_container_width=True)
                                 else:
-                                    st.caption("Sem materiais registrados.")
-
+                                    st.caption("Sem materiais.")
                                 st.markdown("---")
-                                
-                                # GALERIA DE FOTOS (NOVIDADE)
-                                qtd_fotos = len(galeria)
-                                if qtd_fotos > 0:
-                                    st.success(f"📸 Este evento possui {qtd_fotos} fotos registradas.")
-                                    # Botão para expandir a galeria
-                                    if st.checkbox("👁️ Ver Galeria de Fotos", key=f"ver_fotos_{row['id']}"):
-                                        lista_caminhos = galeria['caminho_foto'].tolist()
-                                        # Filtra para garantir que arquivos existem
-                                        fotos_reais = [f for f in lista_caminhos if os.path.exists(f)]
-                                        
-                                        if fotos_reais:
-                                            # Mostra as fotos em grade
-                                            st.image(fotos_reais, width=200, caption=[f"Foto {i+1}" for i in range(len(fotos_reais))])
-                                        else:
-                                            st.warning("Arquivos de foto não encontrados na pasta.")
+                                if len(galeria) > 0:
+                                    if st.checkbox("👁️ Ver Fotos", key=f"v_f_{row['id']}"):
+                                        fotos_reais = [f for f in galeria['caminho_foto'].tolist() if os.path.exists(f)]
+                                        if fotos_reais: st.image(fotos_reais, width=200)
                                 else:
-                                    st.caption("Nenhuma foto anexada.")
+                                    st.caption("Sem fotos.")
 
-                            # --- ABA 2: AÇÕES (AQUI APLICAMOS A TRAVA "FINALIZADO") ---
+                            # --- ABA AÇÕES (AQUI MUDAMOS TUDO) ---
                             with t_acao:
                                 
-                                # SE ESTIVER FINALIZADO: MOSTRA APENAS AVISO
+                                # CENÁRIO 1: EVENTO FINALIZADO (Protegido por Senha)
                                 if row['status'] == 'Finalizado':
-                                    st.markdown("""
-                                        <div style='background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #4CAF50;'>
-                                            <h4 style='color: #2e7d32; margin:0;'>🔒 Evento Finalizado</h4>
-                                            <p style='font-size: 14px; margin:0;'>Edição bloqueada para segurança.</p>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                    st.info("Para alterar este evento, contate o administrador do banco de dados.")
-                                
-                                # SE ESTIVER ATIVO: LIBERA TUDO
-                                else:
-                                    # 1. Upload de Múltiplas Fotos
-                                    st.write("**Adicionar Fotos:**")
-                                    # accept_multiple_files=True permite selecionar 15 fotos de uma vez
-                                    novas_fotos = st.file_uploader("Selecione fotos", type=['jpg','png'], accept_multiple_files=True, key=f"up_{row['id']}")
+                                    st.info("🔒 Evento Finalizado.")
                                     
-                                    if novas_fotos:
-                                        if st.button(f"Salvar {len(novas_fotos)} Fotos", key=f"sf_{row['id']}"):
-                                            if not os.path.exists("fotos_eventos"): os.makedirs("fotos_eventos")
+                                    # Área Administrativa
+                                    with st.expander("🔐 Área do Administrador (Exclusão)"):
+                                        senha_admin = st.text_input("Senha de Administrador", type="password", key=f"pass_{row['id']}")
+                                        
+                                        # DEFINA SUA SENHA AQUI (Ex: "admin123")
+                                        if senha_admin == "admin123":
+                                            st.error("⚠️ Zona de Perigo!")
+                                            check_del_fin = st.checkbox("Confirmar exclusão permanente", key=f"chk_fin_{row['id']}")
                                             
-                                            con = pegar_conexao()
-                                            for foto in novas_fotos:
-                                                # Gera nome único para não sobrescrever
-                                                nome_arquivo = f"fotos_eventos/ev_{row['id']}_{int(time.time())}_{foto.name}"
-                                                with open(nome_arquivo, "wb") as f: f.write(foto.getbuffer())
-                                                
-                                                # Salva na tabela nova (album_fotos)
-                                                con.execute("INSERT INTO album_fotos (id_evento, caminho_foto) VALUES (?, ?)", (row['id'], nome_arquivo))
-                                            
-                                            # Atualiza a coluna antiga só para ter uma capa (opcional)
-                                            con.execute("UPDATE eventos SET prova_foto = ? WHERE id = ?", ("Multiplas", row['id']))
-                                            con.commit()
-                                            con.close()
-                                            st.success("Fotos adicionadas ao álbum!")
-                                            time.sleep(1)
-                                            st.rerun()
+                                            if st.button("🗑️ APAGAR REGISTRO FINALIZADO", key=f"btn_del_fin_{row['id']}", disabled=not check_del_fin):
+                                                con = pegar_conexao()
+                                                con.execute("DELETE FROM movimentacoes WHERE id_evento=?", (row['id'],))
+                                                con.execute("DELETE FROM album_fotos WHERE id_evento=?", (row['id'],))
+                                                con.execute("DELETE FROM eventos WHERE id=?", (row['id'],))
+                                                con.commit()
+                                                con.close()
+                                                st.success("Registro apagado pelo administrador.")
+                                                time.sleep(1)
+                                                st.rerun()
+                                        elif senha_admin:
+                                            st.warning("Senha incorreta.")
+
+                                # CENÁRIO 2: EVENTO ATIVO (Agendado ou Em Andamento)
+                                else:
+                                    # Upload e Status (Mantém normal)
+                                    st.write("**Adicionar Fotos:**")
+                                    novas_fotos = st.file_uploader("Fotos", type=['jpg','png'], accept_multiple_files=True, key=f"up_{row['id']}")
+                                    if novas_fotos and st.button("Salvar Fotos", key=f"sf_{row['id']}"):
+                                        con = pegar_conexao()
+                                        if not os.path.exists("fotos_eventos"): os.makedirs("fotos_eventos")
+                                        for foto in novas_fotos:
+                                            nome_arq = f"fotos_eventos/ev_{row['id']}_{int(time.time())}_{foto.name}"
+                                            with open(nome_arq, "wb") as f: f.write(foto.getbuffer())
+                                            con.execute("INSERT INTO album_fotos (id_evento, caminho_foto) VALUES (?, ?)", (row['id'], nome_arq))
+                                        con.execute("UPDATE eventos SET prova_foto = ? WHERE id = ?", ("Multiplas", row['id']))
+                                        con.commit()
+                                        con.close()
+                                        st.success("Salvo!")
+                                        st.rerun()
 
                                     st.markdown("---")
-                                    
-                                    # 2. Mudar Status
-                                    st.write("**Atualizar Situação:**")
                                     ops = ["Agendado", "Em Andamento", "Finalizado"]
                                     idx = ops.index(row['status'])
-                                    n_st = st.selectbox("Status", ops, index=idx, key=f"st_{row['id']}", label_visibility="collapsed")
-                                    
+                                    n_st = st.selectbox("Status", ops, index=idx, key=f"st_{row['id']}")
                                     if st.button("Gravar Status", key=f"btn_{row['id']}"):
+                                        # (Lógica de travas de segurança mantém a mesma...)
                                         con = pegar_conexao()
-                                        # Trava: Pendências de Material
                                         pend = pd.read_sql_query(f"SELECT COUNT(*) as t FROM movimentacoes WHERE id_evento={row['id']}", con).iloc[0]['t']
-                                        
-                                        # Trava: Pelo menos 1 foto no álbum
                                         tem_album = pd.read_sql_query(f"SELECT COUNT(*) as t FROM album_fotos WHERE id_evento={row['id']}", con).iloc[0]['t']
                                         
                                         if n_st == "Finalizado":
                                             if pend > 0:
-                                                st.error(f"🚫 Bloqueado: Há {pend} itens na rua!")
+                                                st.error(f"🚫 Pendências: {pend} itens!")
                                                 st.stop()
                                             if tem_album == 0 and not novas_fotos:
-                                                st.error("🚫 Bloqueado: É obrigatório ter pelo menos 1 foto no álbum!")
+                                                st.error("🚫 Obrigatório ter fotos!")
                                                 st.stop()
                                         
                                         con.execute("UPDATE eventos SET status = ? WHERE id = ?", (n_st, row['id']))
                                         con.commit()
                                         con.close()
-                                        st.success("Status atualizado!")
                                         st.rerun()
                                     
                                     st.markdown("---")
-                                    # 3. Excluir
-                                    if st.button("🗑️ Excluir Evento", key=f"del_{row['id']}"):
+                                    
+                                    # BOTÃO DE EXCLUIR COM SEGURANÇA (Para eventos ativos)
+                                    st.write("**Zona de Perigo:**")
+                                    check_excluir = st.checkbox("Confirmar exclusão deste evento", key=f"chk_del_{row['id']}")
+                                    
+                                    if st.button("🗑️ Excluir Evento", key=f"del_{row['id']}", disabled=not check_excluir):
                                         con = pegar_conexao()
                                         con.execute("DELETE FROM movimentacoes WHERE id_evento=?", (row['id'],))
-                                        con.execute("DELETE FROM album_fotos WHERE id_evento=?", (row['id'],)) # Limpa fotos também
+                                        con.execute("DELETE FROM album_fotos WHERE id_evento=?", (row['id'],))
                                         con.execute("DELETE FROM eventos WHERE id=?", (row['id'],))
                                         con.commit()
                                         con.close()
+                                        st.error("Evento excluído!")
+                                        time.sleep(1)
                                         st.rerun()
-        con.close()
 
     # --- ABA EQUIPE ---
     with aba_equipe:
-        c1, c2 = st.columns(2)
-        with c1:
-            nm = st.text_input("Nome")
-            cg = st.selectbox("Cargo", ["Montador", "Coordenador", "Motorista"])
-            if st.button("Adicionar Membro"):
-                con = pegar_conexao()
-                con.execute("INSERT INTO membros (nome, cargo) VALUES (?, ?)", (nm, cg))
-                con.commit()
-                con.close()
-                st.success("Adicionado!")
-                st.rerun()
-        with c2:
-            con = pegar_conexao()
-            membros = pd.read_sql_query("SELECT * FROM membros", con)
-            con.close()
-            if not membros.empty:
-                me = st.selectbox("Remover quem?", membros['nome'].tolist())
-                if st.button("🗑️ Remover Membro"):
-                    con = pegar_conexao()
-                    con.execute("DELETE FROM membros WHERE nome = ?", (me,))
-                    con.commit()
-                    con.close()
-                    st.rerun()
+        st.subheader("👥 Gestão de Membros da Equipe")
+        
+        con = pegar_conexao()
+        df_membros = pd.read_sql_query("SELECT * FROM membros", con)
+        con.close()
+        
+        if df_membros.empty:
+            st.info("Nenhum membro cadastrado.")
+        else:
+            st.markdown("##### 📋 Lista Atual de Colaboradores")
+            
+            # TRUQUE VISUAL: Criamos 3 colunas [Espaço, Tabela, Espaço]
+            # O [1, 2, 1] significa que a tabela ocupará 50% da tela, centralizada.
+            c_esq, c_meio, c_dir = st.columns([1, 2, 1])
+            
+            with c_meio:
+                st.dataframe(
+                    df_membros,
+                    hide_index=True,
+                    use_container_width=True,
+                    # Configuração para deixar a tabela bonita
+                    column_config={
+                        "id": None, # Esconde a coluna ID (não precisa ver)
+                        "nome": st.column_config.TextColumn(
+                            "👤 Nome do Colaborador",
+                            width="medium"
+                        ),
+                        "cargo": st.column_config.TextColumn(
+                            "🛠️ Função / Cargo",
+                            width="small"
+                        )
+                    }
+                )
+        
+        st.divider()
+
+        # ÁREA DE AÇÕES (CADASTRO E REMOÇÃO)
+        c_add, c_del = st.columns(2, gap="large")
+        
+        # Coluna Esquerda: Adicionar
+        with c_add:
+            st.markdown("#### ➕ Adicionar Novo")
+            with st.form("form_add_membro"):
+                nm = st.text_input("Nome Completo")
+                cg = st.selectbox("Função/Cargo", ["Montador", "Coordenador", "Motorista", "Auxiliar"])
+                
+                if st.form_submit_button("Cadastrar Membro", type="primary"):
+                    if nm:
+                        if not df_membros.empty and nm in df_membros['nome'].values:
+                            st.warning("Esse nome já está na lista!")
+                        else:
+                            con = pegar_conexao()
+                            con.execute("INSERT INTO membros (nome, cargo) VALUES (?, ?)", (nm, cg))
+                            con.commit()
+                            con.close()
+                            st.success(f"✅ {nm} adicionado!")
+                            time.sleep(0.5)
+                            st.rerun()
+                    else:
+                        st.warning("Preencha o nome.")
+
+        # Coluna Direita: Remover
+        with c_del:
+            st.markdown("#### 🗑️ Remover Colaborador")
+            if not df_membros.empty:
+                me = st.selectbox("Selecione para excluir:", df_membros['nome'].tolist())
+                
+                # Checkbox simples e direto
+                if st.checkbox(f"Confirmar exclusão de {me}", key="chk_del_memb"):
+                    if st.button("Confirmar Exclusão", type="primary"):
+                        con = pegar_conexao()
+                        con.execute("DELETE FROM membros WHERE nome = ?", (me,))
+                        con.commit()
+                        con.close()
+                        st.error("Membro removido!")
+                        time.sleep(0.5)
+                        st.rerun()
+            else:
+                st.caption("A lista está vazia.")
 
     # --- ABA NOVO EVENTO ---
     with aba_novo:
@@ -645,4 +685,5 @@ elif opcao == "📅 Gestão de Eventos":
                     con.close()
                     st.success(msg)
                     time.sleep(1.5)
+
                     st.rerun()
