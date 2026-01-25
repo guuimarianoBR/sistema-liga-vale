@@ -55,7 +55,6 @@ if opcao == "🏠 Início":
     # 1. CABEÇALHO
     
     # --- PARTE DA LOGO ---
-    # Criamos 3 colunas para centralizar a imagem no meio
     c_img_esq, c_img_centro, c_img_dir = st.columns([3, 2, 3])
     with c_img_centro:
         # Verifica se a imagem existe para não dar erro se esquecer de salvar
@@ -175,7 +174,7 @@ elif opcao == "📦 Estoque":
     # Abas principais
     aba_ver, aba_cad = st.tabs(["📋 Ver Estoque Completo", "➕ Cadastrar Novo Item"])
 
-    # --- ABA DE CADASTRO (Mantemos igual) ---
+    # --- ABA DE CADASTRO  ---
     with aba_cad:
         st.subheader("Adicionar Novo Material")
         with st.form("form_cadastro_visual"):
@@ -200,7 +199,7 @@ elif opcao == "📦 Estoque":
                 con.close()
                 st.success("Item cadastrado com sucesso!")
 
-    # --- ABA DE VISUALIZAÇÃO (AQUI MUDAMOS O DESIGN) ---
+    # --- ABA DE VISUALIZAÇÃO  ---
     with aba_ver:
         st.subheader("📋 Estoque Atual")
         
@@ -216,7 +215,7 @@ elif opcao == "📦 Estoque":
                 
                 # Container cria um bloco visual para cada item
                 with st.container():
-                    # Criamos colunas: Imagem (menor) | Dados (maior)
+                    # Colunas: Imagem (menor) | Dados (maior)
                     col_foto, col_dados = st.columns([1, 4])
                     
                     # --- COLUNA DA ESQUERDA: FOTO ---
@@ -305,16 +304,19 @@ elif opcao == "📅 Gestão de Eventos":
 
     # --- ABA PAINEL (COM TRAVA DE SEGURANÇA E GALERIA DE FOTOS) ---
     with aba_painel:
+        with aba_painel:
         st.subheader("📋 Quadro de Gestão de Eventos")
         
-        # (Código de criação da tabela de fotos - mantemos igual)
+        # Cria tabelas se não existirem
         con_temp = pegar_conexao()
         con_temp.execute("CREATE TABLE IF NOT EXISTS album_fotos (id INTEGER PRIMARY KEY AUTOINCREMENT, id_evento INTEGER, caminho_foto TEXT)")
         con_temp.commit()
         con_temp.close()
         
+        # Carrega dados
         con = pegar_conexao()
         df_evs = pd.read_sql_query("SELECT * FROM eventos", con)
+        lista_membros_completa = pd.read_sql_query("SELECT nome FROM membros", con)['nome'].tolist()
         con.close()
         
         if df_evs.empty:
@@ -344,7 +346,11 @@ elif opcao == "📅 Gestão de Eventos":
                             
                             t_info, t_acao = st.tabs(["📋 Detalhes", "⚙️ Gestão"])
                             
-                            # --- ABA DETALHES (Igual ao anterior) ---
+                            # Prepara lista da equipe para uso no código
+                            equipe_atual_lista = [x.strip() for x in row['equipe_nomes'].split(",")] if row['equipe_nomes'] else []
+                            equipe_validada = [m for m in equipe_atual_lista if m in lista_membros_completa]
+
+                            # --- ABA DETALHES ---
                             with t_info:
                                 st.write(f"**👷 Equipe:** {row['equipe_nomes']}")
                                 st.markdown("---")
@@ -361,49 +367,68 @@ elif opcao == "📅 Gestão de Eventos":
                                     st.dataframe(itens, hide_index=True, use_container_width=True)
                                 else:
                                     st.caption("Sem materiais.")
+                                
                                 st.markdown("---")
                                 if len(galeria) > 0:
                                     if st.checkbox("👁️ Ver Fotos", key=f"v_f_{row['id']}"):
                                         fotos_reais = [f for f in galeria['caminho_foto'].tolist() if os.path.exists(f)]
                                         if fotos_reais: st.image(fotos_reais, width=200)
-                                else:
-                                    st.caption("Sem fotos.")
 
-                            # --- ABA AÇÕES (AQUI MUDAMOS TUDO) ---
+                            # --- ABA AÇÕES  ---
                             with t_acao:
                                 
-                                # CENÁRIO 1: EVENTO FINALIZADO (Protegido por Senha)
+                                # =========================================
+                                # CENÁRIO 1: EVENTO FINALIZADO (TRAVADO)
+                                # =========================================
                                 if row['status'] == 'Finalizado':
-                                    st.info("🔒 Evento Finalizado.")
+                                    st.markdown("""
+                                        <div style='background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #4CAF50; margin-bottom: 10px;'>
+                                            <h4 style='color: #2e7d32; margin:0;'>🔒 Evento Finalizado</h4>
+                                            <p style='font-size: 13px; margin:0;'>Equipe e Dados Históricos não podem ser alterados.</p>
+                                        </div>
+                                    """, unsafe_allow_html=True)
                                     
-                                    # Área Administrativa
-                                    with st.expander("🔐 Área do Administrador (Exclusão)"):
-                                        senha_admin = st.text_input("Senha de Administrador", type="password", key=f"pass_{row['id']}")
-                                        
-                                        # DEFINA SUA SENHA AQUI (Ex: "admin123")
+                                    # Mostra a equipe apenas como texto (sem poder editar)
+                                    st.write(f"**Equipe Confirmada:** {row['equipe_nomes']}")
+                                    
+                                    # Admin serve APENAS para deletar o evento se necessário
+                                    with st.expander("🔐 Área Admin (Apenas Exclusão)"):
+                                        senha_admin = st.text_input("Senha", type="password", key=f"pass_{row['id']}")
                                         if senha_admin == "admin123":
-                                            st.error("⚠️ Zona de Perigo!")
                                             check_del_fin = st.checkbox("Confirmar exclusão permanente", key=f"chk_fin_{row['id']}")
-                                            
-                                            if st.button("🗑️ APAGAR REGISTRO FINALIZADO", key=f"btn_del_fin_{row['id']}", disabled=not check_del_fin):
+                                            if st.button("🗑️ APAGAR REGISTRO", key=f"btn_del_fin_{row['id']}", disabled=not check_del_fin):
                                                 con = pegar_conexao()
                                                 con.execute("DELETE FROM movimentacoes WHERE id_evento=?", (row['id'],))
                                                 con.execute("DELETE FROM album_fotos WHERE id_evento=?", (row['id'],))
                                                 con.execute("DELETE FROM eventos WHERE id=?", (row['id'],))
                                                 con.commit()
                                                 con.close()
-                                                st.success("Registro apagado pelo administrador.")
-                                                time.sleep(1)
                                                 st.rerun()
-                                        elif senha_admin:
-                                            st.warning("Senha incorreta.")
 
-                                # CENÁRIO 2: EVENTO ATIVO (Agendado ou Em Andamento)
+                                # =========================================
+                                # CENÁRIO 2: EVENTO ATIVO (EDITÁVEL)
+                                # =========================================
                                 else:
-                                    # Upload e Status (Mantém normal)
+                                    # 1. EDITAR EQUIPE (Só aparece aqui)
+                                    st.markdown("##### 👷 Editar Escalação")
+                                    nova_equipe = st.multiselect("Membros da Equipe", lista_membros_completa, default=equipe_validada, key=f"edit_eq_{row['id']}")
+                                    
+                                    if st.button("Salvar Equipe", key=f"btn_save_eq_{row['id']}"):
+                                        string_nova_equipe = ", ".join(nova_equipe)
+                                        con = pegar_conexao()
+                                        con.execute("UPDATE eventos SET equipe_nomes = ? WHERE id = ?", (string_nova_equipe, row['id']))
+                                        con.commit()
+                                        con.close()
+                                        st.success("Escalação atualizada!")
+                                        time.sleep(0.5)
+                                        st.rerun()
+
+                                    st.divider()
+
+                                    # 2. FOTOS
                                     st.write("**Adicionar Fotos:**")
-                                    novas_fotos = st.file_uploader("Fotos", type=['jpg','png'], accept_multiple_files=True, key=f"up_{row['id']}")
-                                    if novas_fotos and st.button("Salvar Fotos", key=f"sf_{row['id']}"):
+                                    novas_fotos = st.file_uploader("Upload", type=['jpg','png'], accept_multiple_files=True, key=f"up_{row['id']}", label_visibility="collapsed")
+                                    if novas_fotos and st.button("Enviar Fotos", key=f"sf_{row['id']}"):
                                         con = pegar_conexao()
                                         if not os.path.exists("fotos_eventos"): os.makedirs("fotos_eventos")
                                         for foto in novas_fotos:
@@ -413,15 +438,18 @@ elif opcao == "📅 Gestão de Eventos":
                                         con.execute("UPDATE eventos SET prova_foto = ? WHERE id = ?", ("Multiplas", row['id']))
                                         con.commit()
                                         con.close()
-                                        st.success("Salvo!")
+                                        st.success("Fotos salvas!")
                                         st.rerun()
 
-                                    st.markdown("---")
+                                    st.divider()
+
+                                    # 3. MUDAR STATUS
+                                    st.write("**Alterar Status:**")
                                     ops = ["Agendado", "Em Andamento", "Finalizado"]
                                     idx = ops.index(row['status'])
-                                    n_st = st.selectbox("Status", ops, index=idx, key=f"st_{row['id']}")
-                                    if st.button("Gravar Status", key=f"btn_{row['id']}"):
-                                        # (Lógica de travas de segurança mantém a mesma...)
+                                    n_st = st.selectbox("Status", ops, index=idx, key=f"st_{row['id']}", label_visibility="collapsed")
+                                    
+                                    if st.button("Confirmar Status", key=f"btn_{row['id']}"):
                                         con = pegar_conexao()
                                         pend = pd.read_sql_query(f"SELECT COUNT(*) as t FROM movimentacoes WHERE id_evento={row['id']}", con).iloc[0]['t']
                                         tem_album = pd.read_sql_query(f"SELECT COUNT(*) as t FROM album_fotos WHERE id_evento={row['id']}", con).iloc[0]['t']
@@ -431,7 +459,7 @@ elif opcao == "📅 Gestão de Eventos":
                                                 st.error(f"🚫 Pendências: {pend} itens!")
                                                 st.stop()
                                             if tem_album == 0 and not novas_fotos:
-                                                st.error("🚫 Obrigatório ter fotos!")
+                                                st.error("🚫 É obrigatório ter fotos!")
                                                 st.stop()
                                         
                                         con.execute("UPDATE eventos SET status = ? WHERE id = ?", (n_st, row['id']))
@@ -439,23 +467,17 @@ elif opcao == "📅 Gestão de Eventos":
                                         con.close()
                                         st.rerun()
                                     
-                                    st.markdown("---")
-                                    
-                                    # BOTÃO DE EXCLUIR COM SEGURANÇA (Para eventos ativos)
-                                    st.write("**Zona de Perigo:**")
-                                    check_excluir = st.checkbox("Confirmar exclusão deste evento", key=f"chk_del_{row['id']}")
-                                    
-                                    if st.button("🗑️ Excluir Evento", key=f"del_{row['id']}", disabled=not check_excluir):
+                                    # 4. EXCLUIR
+                                    st.write("---")
+                                    chk_ex = st.checkbox("Confirmar exclusão", key=f"chk_del_{row['id']}")
+                                    if st.button("🗑️ Excluir Evento", key=f"del_{row['id']}", disabled=not chk_ex):
                                         con = pegar_conexao()
                                         con.execute("DELETE FROM movimentacoes WHERE id_evento=?", (row['id'],))
                                         con.execute("DELETE FROM album_fotos WHERE id_evento=?", (row['id'],))
                                         con.execute("DELETE FROM eventos WHERE id=?", (row['id'],))
                                         con.commit()
                                         con.close()
-                                        st.error("Evento excluído!")
-                                        time.sleep(1)
                                         st.rerun()
-
     # --- ABA EQUIPE ---
     with aba_equipe:
         st.subheader("👥 Gestão de Membros da Equipe")
@@ -469,7 +491,7 @@ elif opcao == "📅 Gestão de Eventos":
         else:
             st.markdown("##### 📋 Lista Atual de Colaboradores")
             
-            # TRUQUE VISUAL: Criamos 3 colunas [Espaço, Tabela, Espaço]
+            # 3 colunas [Espaço, Tabela, Espaço]
             # O [1, 2, 1] significa que a tabela ocupará 50% da tela, centralizada.
             c_esq, c_meio, c_dir = st.columns([1, 2, 1])
             
@@ -558,7 +580,7 @@ elif opcao == "📅 Gestão de Eventos":
             
             if st.form_submit_button("Criar Evento"):
                 if nome_ev and end_ev:
-                    # Juntamos Nome e Endereço para facilitar a visualização no resto do sistema
+                    # Juntei Nome e Endereço para facilitar a visualização no resto do sistema
                     identificacao_completa = f"{nome_ev} | {end_ev}"
                     
                     con = pegar_conexao()
@@ -570,12 +592,12 @@ elif opcao == "📅 Gestão de Eventos":
                 else:
                     st.warning("Preencha o Nome e o Endereço.")
 
-    # --- ABA SAÍDA (AGORA COM TRAVA DE ESTOQUE) ---
+    # --- ABA SAÍDA ---
     with aba_logistica:
         st.subheader("🚚 Registrar Saída de Material")
         
         con = pegar_conexao()
-        # Buscamos eventos ativos e a lista de itens completa
+        # Aqui a gente busca eventos ativos e a lista de itens completa
         ev_a = pd.read_sql_query("SELECT id, endereco FROM eventos WHERE status != 'Finalizado'", con)
         its = pd.read_sql_query("SELECT * FROM itens", con)
         con.close()
@@ -629,7 +651,7 @@ elif opcao == "📅 Gestão de Eventos":
                 
                 con.close()
 
-    # --- ABA RETORNO (CORRIGIDA: ERRO DE TIPO BYTES) ---
+    # --- ABA RETORNO  ---
     with aba_retorno:
         st.subheader("🔙 Retorno de Material")
         st.info("Abaixo estão os itens que ainda estão na rua. Selecione para devolver.")
@@ -647,10 +669,7 @@ elif opcao == "📅 Gestão de Eventos":
             st.success("✅ Tudo limpo! Nenhum material pendente na rua.")
         else:
             st.markdown("##### 📋 Lista de Pendências")
-            
-            # 1. VISUAL DA TABELA MELHORADO
-            # Usamos [0.2, 4, 0.2] para dar apenas uma margem leve nas laterais, 
-            # pois "Endereço" precisa de espaço para ler.
+        
             c_esq, c_meio, c_dir = st.columns([0.2, 4, 0.2])
             
             with c_meio:
@@ -712,3 +731,4 @@ elif opcao == "📅 Gestão de Eventos":
                     st.success(msg)
                     time.sleep(1.5)
                     st.rerun()
+
