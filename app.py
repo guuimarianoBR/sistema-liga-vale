@@ -632,7 +632,7 @@ elif opcao == "📅 Gestão de Eventos":
     # --- ABA RETORNO (CORRIGIDA: ERRO DE TIPO BYTES) ---
     with aba_retorno:
         st.subheader("🔙 Retorno de Material")
-        st.info("Selecione o item e diga a quantidade que voltou para a base.")
+        st.info("Abaixo estão os itens que ainda estão na rua. Selecione para devolver.")
 
         con = pegar_conexao()
         movs = pd.read_sql_query('''
@@ -646,25 +646,51 @@ elif opcao == "📅 Gestão de Eventos":
         if movs.empty:
             st.success("✅ Tudo limpo! Nenhum material pendente na rua.")
         else:
-            st.dataframe(movs, use_container_width=True)
+            st.markdown("##### 📋 Lista de Pendências")
+            
+            # 1. VISUAL DA TABELA MELHORADO
+            # Usamos [0.2, 4, 0.2] para dar apenas uma margem leve nas laterais, 
+            # pois "Endereço" precisa de espaço para ler.
+            c_esq, c_meio, c_dir = st.columns([0.2, 4, 0.2])
+            
+            with c_meio:
+                st.dataframe(
+                    movs,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "id": None, # Esconde o ID
+                        "endereco": st.column_config.TextColumn(
+                            "📍 Evento / Local",
+                            width="large" # Dá mais espaço para o endereço
+                        ),
+                        "nome_item": st.column_config.TextColumn(
+                            "📦 Material",
+                            width="medium"
+                        ),
+                        "quantidade": st.column_config.NumberColumn(
+                            "🔢 Qtd Pendente",
+                            format="%d", # Garante número inteiro
+                            width="small"
+                        )
+                    }
+                )
+
             st.divider()
 
+            # 2. ÁREA DE AÇÃO (Devolução)
             col_dev1, col_dev2, col_dev3 = st.columns([3, 2, 2])
             
             with col_dev1:
-                # Lista explicativa
+                # Lista explicativa para o Selectbox
                 lista_opcoes = movs.apply(lambda x: f"{x['id']} - {x['nome_item']} (No local: {x['quantidade']}) em {x['endereco']}", axis=1).tolist()
                 selecao = st.selectbox("Selecione a Movimentação:", lista_opcoes)
             
-            # --- AQUI ESTAVA O ERRO ---
-            # Pegamos o ID
+            # Lógica de Quantidade
             id_mov_selecionado = int(selecao.split(" - ")[0])
-            
-            # CORREÇÃO: Envolvemos tudo num int() para garantir que é número, não bytes
             qtd_maxima_no_local = int(movs[movs['id'] == id_mov_selecionado]['quantidade'].values[0])
 
             with col_dev2:
-                # Agora o Streamlit não vai reclamar, pois max_value é int
                 qtd_devolver = st.number_input("Qtd a Devolver", min_value=1, max_value=qtd_maxima_no_local, value=qtd_maxima_no_local)
 
             with col_dev3:
@@ -675,16 +701,14 @@ elif opcao == "📅 Gestão de Eventos":
                     
                     if qtd_devolver == qtd_maxima_no_local:
                         con.execute("DELETE FROM movimentacoes WHERE id = ?", (id_mov_selecionado,))
-                        msg = "Devolução total concluída! Item removido da lista."
+                        msg = "✅ Devolução total! Item baixado."
                     else:
                         nova_qtd = qtd_maxima_no_local - qtd_devolver
                         con.execute("UPDATE movimentacoes SET quantidade = ? WHERE id = ?", (nova_qtd, id_mov_selecionado))
-                        msg = f"Devolução parcial! {qtd_devolver} voltaram, {nova_qtd} continuam lá."
+                        msg = f"✅ Devolução parcial! {qtd_devolver} retornaram."
                     
                     con.commit()
                     con.close()
                     st.success(msg)
                     time.sleep(1.5)
-
                     st.rerun()
-
