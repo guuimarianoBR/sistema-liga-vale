@@ -304,7 +304,7 @@ elif opcao == "📅 Gestão de Eventos":
     ])
 
     # --- ABA PAINEL (COM TRAVA DE SEGURANÇA E GALERIA DE FOTOS) ---
-   with aba_painel:
+    with aba_painel:
         st.subheader("📋 Quadro de Gestão de Eventos")
         
         # (Código de criação da tabela de fotos - mantemos igual)
@@ -687,3 +687,4 @@ elif opcao == "📅 Gestão de Eventos":
                     time.sleep(1.5)
 
                     st.rerun()
+
